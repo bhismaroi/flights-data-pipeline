@@ -2,4 +2,3 @@
 *.pyc
 __pycache__/
 loginairflow
-source_init.sql
