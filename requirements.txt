@@ -1,0 +1,4 @@
+pandas
+pendulum
+minio
+psycopg2-binary
