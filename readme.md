@@ -100,15 +100,15 @@ Check Airflow logs for errors:docker logs airflow_standalone
 Screenshots
 
 Airflow DAG Graph: Shows the task structure of flights_dataHumanline (extract, load, transform).
-[Insert screenshot: screenshots/airflow_dag_graph.png]
+![!\[alt text\](image.png)](images/diagram.png)
 
 
 MinIO Bucket: Displays CSV files in extracted-data/temp/.
-[Insert screenshot: screenshots/minio_bucket.png]
-
+![!\[alt text\](miniobucket.png)](images/miniobucket.png)
 
 Warehouse Tables: Shows psql output of warehouse schema tables and sample data.
-[Insert screenshot: screenshots/warehouse_tables.png]
+![!\[alt text\](warehousestg.png)](images/warehousestg.png)
+
 
 
 
