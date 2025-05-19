@@ -10,9 +10,7 @@ Data Warehouse: PostgreSQL database with staging schema (for raw data) and wareh
 Orchestrator: Apache Airflow 2.10.2 in standalone mode, running the flights_dataHumanline DAG.
 Setup Tool: Docker Compose to manage all services.
 
-Architecture Diagram (optional, can be added using tools like draw.io):
-
-[Placeholder for diagram showing data flow: Source DB → MinIO → Staging → Warehouse, orchestrated by Airflow]
+![!\[alt text\](image.png)](images/diagram.png)
 
 Pipeline Flow
 The flights_dataHumanline DAG is structured into three TaskGroups:
@@ -42,7 +40,7 @@ How to Run and Simulate
 Follow these steps to set up and run the project:
 
 Clone the Repository:git clone <repository-url>
-cd flights_data_pipeline
+cd mentoring1
 
 
 Set Up Environment Variables:
