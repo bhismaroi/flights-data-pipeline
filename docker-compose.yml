@@ -90,20 +90,6 @@ services:
     networks:
       - airflow-networks
 
-  minio-init:
-    image: minio/mc:latest
-    depends_on:
-      - minio
-    entrypoint: >
-      /bin/sh -c "
-      sleep 10;
-      /usr/bin/mc alias set myminio http://minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD};
-      /usr/bin/mc mb myminio/extracted-data;
-      /usr/bin/mc policy set public myminio/extracted-data;
-      "
-    networks:
-      - airflow-networks
-
 volumes:
   airflow_metadata:
     driver: local
