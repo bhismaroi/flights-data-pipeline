@@ -1,19 +1,19 @@
 Flights Data Pipeline
 Project Overview
-This project implements an automated data pipeline for a simulated flight booking system as part of the Pacmann Job Preparation Program. The pipeline extracts data from a PostgreSQL source database (bookings schema), stores it as CSV files in a MinIO object store, loads it into a PostgreSQL staging schema, and transforms it into dimension and fact tables in a data warehouse. The entire workflow is orchestrated using Apache Airflow (version 2.10.2) with a DAG named flights_dataHumanline.
+This project implements an automated data pipeline for a simulated flight booking system as part of the Pacmann Job Preparation Program. The pipeline extracts data from a PostgreSQL source database (bookings schema), stores it as CSV files in a MinIO object store, loads it into a PostgreSQL staging schema, and transforms it into dimension and fact tables in a data warehouse. The entire workflow is orchestrated using Apache Airflow (version 2.10.2) with a DAG named flights_data_pipeline.
 Architecture Description
 The pipeline consists of the following components:
 
 Data Source: PostgreSQL database (bookings schema) containing tables: aircrafts_data, airports_data, bookings, tickets, seats, flights, ticket_flights, and boarding_passes.
 Data Lake: MinIO object store with a bucket named extracted-data for storing CSV files.
 Data Warehouse: PostgreSQL database with staging schema (for raw data) and warehouse schema (for dimension and fact tables).
-Orchestrator: Apache Airflow 2.10.2 in standalone mode, running the flights_dataHumanline DAG.
+Orchestrator: Apache Airflow 2.10.2 in standalone mode, running the flights_data_pipeline DAG.
 Setup Tool: Docker Compose to manage all services.
 
 ![!\[alt text\](image.png)](images/diagram.png)
 
 Pipeline Flow
-The flights_dataHumanline DAG is structured into three TaskGroups:
+The flights_data_pipeline DAG is structured into three TaskGroups:
 
 Extract:
 Goal: Extract data from the bookings schema tables in the source PostgreSQL database.
@@ -77,7 +77,7 @@ Port: 5432
 
 Deploy and Run the DAG:
 Place flights_data_pipeline.py in dags/.
-In Airflow UI, enable and trigger the flights_dataHumanline DAG.
+In Airflow UI, enable and trigger the flights_data_pipeline DAG.
 
 
 Verify Data Flow:
@@ -99,9 +99,8 @@ Check Airflow logs for errors:docker logs airflow_standalone
 
 Screenshots
 
-Airflow DAG Graph: Shows the task structure of flights_dataHumanline (extract, load, transform).
+Airflow DAG Graph: Shows the task structure of flights_data_pipeline (extract, load, transform).
 ![!\[alt text\](image.png)](images/diagram.png)
-
 
 MinIO Bucket: Displays CSV files in extracted-data/temp/.
 ![!\[alt text\](miniobucket.png)](images/miniobucket.png)
