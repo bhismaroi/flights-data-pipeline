@@ -196,7 +196,7 @@ with DAG(
         dim_aircraft = PostgresOperator(
             task_id='transform_dim_aircraft',
             postgres_conn_id='warehouse_db',
-            sql='/opt/airflow/include/transformations/dim_aircraft.sql',
+            sql='/opt/airflow/include/transformations/dim_aircrafts.sql',
         )
 
         dim_airport = PostgresOperator(
