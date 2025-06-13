@@ -2,7 +2,7 @@
 
 from airflow import DAG
 from airflow.operators.python import PythonOperator
-from airflow.operators.postgres_operator import PostgresOperator
+from airflow.providers.postgres.operators.postgres import PostgresOperator
 from airflow.utils.task_group import TaskGroup
 from datetime import datetime
 import pandas as pd
@@ -61,6 +61,11 @@ with DAG(
         secure=False,
     )
 
+    # Ensure the bucket used in the pipeline exists
+    BUCKET_NAME = 'extracted-data'
+    if not MINIO_CLIENT.bucket_exists(BUCKET_NAME):
+        MINIO_CLIENT.make_bucket(BUCKET_NAME)
+
     TABLES = [
         'aircrafts_data',
         'airports_data',
@@ -100,9 +105,8 @@ with DAG(
             df.to_csv(csv_path, index=False, quoting=csv.QUOTE_NONNUMERIC)
 
             # Upload to MinIO
-            bucket_name = 'extracted-data'
             object_name = f"temp/{table_name}.csv"
-            MINIO_CLIENT.fput_object(bucket_name, object_name, csv_path)
+            MINIO_CLIENT.fput_object(BUCKET_NAME, object_name, csv_path)
             logger.info(f"Uploaded {table_name}.csv to MinIO at {object_name}")
 
             # Clean up
@@ -125,10 +129,9 @@ with DAG(
         try:
             logger.info(f"Loading table: {table_name}")
             # Download from MinIO
-            bucket_name = 'extracted-data'
             object_name = f"temp/{table_name}.csv"
             csv_path = f"/tmp/{table_name}.csv"
-            MINIO_CLIENT.fget_object(bucket_name, object_name, csv_path)
+            MINIO_CLIENT.fget_object(BUCKET_NAME, object_name, csv_path)
 
             # Read CSV
             df = pd.read_csv(csv_path, keep_default_na=False, na_values=['NaN', ''])
@@ -146,13 +149,7 @@ with DAG(
             
             for col in json_cols:
                 if col in df.columns:
-                    def escape_json(x):
-                        if pd.notnull(x) and x != 'None':
-                            return "'{}'::json".format(str(x).replace("'", "''"))
-                        else:
-                            return 'null'
-                    df[col] = df[col].apply(escape_json)
-                    df[col] = df[col].apply(lambda x: "'{}'::json".format(str(x).replace("'", "''")) if pd.notnull(x) and x != 'None' else 'null')
+                    df[col] = df[col].apply(lambda x: json.dumps(x) if pd.notnull(x) else None)
 
             # Convert all other columns to tuples, handling NULL values
             values = [
