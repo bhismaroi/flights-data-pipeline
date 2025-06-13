@@ -1,27 +1,82 @@
 version: '3.8'
 services:
-  airflow:
+  airflow-webserver:
     build:
       context: .
       dockerfile: Dockerfile
       network: host
-    container_name: airflow_standalone
+    container_name: airflow_webserver
     environment:
-      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=${AIRFLOW_DB_URI}
       - AIRFLOW__CORE__LOAD_DEFAULT_CONNECTIONS=False
       - AIRFLOW__CORE__FERNET_KEY=${AIRFLOW_FERNET_KEY}
       - AIRFLOW_ADMIN_PWD=${AIRFLOW_ADMIN_PWD:-admin}
+      - AIRFLOW__CELERY__BROKER_URL=redis://redis:6379/0
+      - AIRFLOW__CELERY__RESULT_BACKEND=db+${AIRFLOW_DB_URI}
     depends_on:
       - airflow_metadata
       - source_db
       - warehouse_db
       - minio
+      - redis
     ports:
       - "8080:8080"
     volumes:
       - ./dags:/opt/airflow/dags
       - ./include:/opt/airflow/include
+    networks:
+      - airflow-networks
+
+  airflow-scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      network: host
+    container_name: airflow_scheduler
+    command: >
+      bash -c "airflow db upgrade && /start.sh scheduler"
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=${AIRFLOW_DB_URI}
+      - AIRFLOW__CORE__FERNET_KEY=${AIRFLOW_FERNET_KEY}
+      - AIRFLOW__CELERY__BROKER_URL=redis://redis:6379/0
+      - AIRFLOW__CELERY__RESULT_BACKEND=db+${AIRFLOW_DB_URI}
+    depends_on:
+      - airflow_metadata
+      - redis
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./include:/opt/airflow/include
+    networks:
+      - airflow-networks
+
+  airflow-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      network: host
+    container_name: airflow_worker
+    command: >
+      bash -c "airflow celery worker"
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=${AIRFLOW_DB_URI}
+      - AIRFLOW__CORE__FERNET_KEY=${AIRFLOW_FERNET_KEY}
+      - AIRFLOW__CELERY__BROKER_URL=redis://redis:6379/0
+      - AIRFLOW__CELERY__RESULT_BACKEND=db+${AIRFLOW_DB_URI}
+    depends_on:
+      - airflow_metadata
+      - redis
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./include:/opt/airflow/include
+    networks:
+      - airflow-networks
+
+  redis:
+    image: redis:6
+    container_name: redis
     networks:
       - airflow-networks
 

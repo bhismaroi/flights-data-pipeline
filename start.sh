@@ -70,7 +70,11 @@ airflow connections add slack_notifier \
     --conn-extra '{"webhook_path": "..."}' || true
 
 # ------------------------------------------------------------------
+# Decide which Airflow component to start
+cmd=${1:-webserver}
 
-# Start webserver and scheduler in background & foreground respectively
-airflow webserver -p 8080 &
-airflow scheduler
+if [ "$cmd" = "scheduler" ]; then
+    exec airflow scheduler
+else
+    exec airflow webserver -p 8080
+fi
