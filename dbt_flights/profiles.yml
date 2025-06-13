@@ -4,7 +4,7 @@ flights_warehouse:
     warehouse:
       type: postgres
       threads: 4
-      host: postgres
+      host: warehouse_db
       port: 5432
       user: airflow
       password: airflow

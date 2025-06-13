@@ -25,6 +25,7 @@ services:
     volumes:
       - ./dags:/opt/airflow/dags
       - ./include:/opt/airflow/include
+      - ./dbt_flights:/opt/airflow/dbt_flights
     networks:
       - airflow-networks
 
@@ -48,6 +49,7 @@ services:
     volumes:
       - ./dags:/opt/airflow/dags
       - ./include:/opt/airflow/include
+      - ./dbt_flights:/opt/airflow/dbt_flights
     networks:
       - airflow-networks
 
@@ -71,6 +73,7 @@ services:
     volumes:
       - ./dags:/opt/airflow/dags
       - ./include:/opt/airflow/include
+      - ./dbt_flights:/opt/airflow/dbt_flights
     networks:
       - airflow-networks
 
