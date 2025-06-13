@@ -56,6 +56,16 @@ $ docker compose up --build -d
 * `requirements.txt`, `.env.example` – dependencies & configuration.
 * `images/` – architecture / UI screenshots.
 
+## Screenshots
+
+## DAG Graph
+
+![DAG Graph](images/DAGS diagram.png)
+
+## MinIO bucket
+
+![MinIO](images/miniobucket.png)
+
 ## Troubleshooting
 * **DAG missing?** – run `docker compose logs airflow_standalone` for import errors.
 * **Task skipped?** – likely no rows matched incremental window.
