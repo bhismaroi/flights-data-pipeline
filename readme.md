@@ -49,13 +49,6 @@ $ docker compose up --build -d
 * MinIO:    http://localhost:9001  (user & pwd from .env)
 ```
 
-## Screenshots
-Add screenshots of:
-* DAG Graph view showing Extract ➜ Load ➜ Transform groups.
-* Successful run status.
-* MinIO bucket with CSV files.
-* Warehouse tables in psql.
-
 ## Repository Contents
 * `dags/` – DAG code.
 * `include/` – DDL & transformation SQL.
