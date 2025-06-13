@@ -18,7 +18,7 @@ from airflow.utils.task_group import TaskGroup
 from airflow.models import Variable
 
 # Re-use helpers from the existing pipeline file
-from dags.flights_data_pipeline import extract_table, load_table  # type: ignore
+from flights_data_pipeline import extract_table, load_table  # type: ignore
 
 local_tz = pendulum.timezone("Asia/Jakarta")
 
