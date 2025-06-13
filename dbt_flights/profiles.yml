@@ -1,0 +1,12 @@
+flights_warehouse:
+  target: warehouse
+  outputs:
+    warehouse:
+      type: postgres
+      threads: 4
+      host: postgres
+      port: 5432
+      user: airflow
+      password: airflow
+      dbname: warehouse
+      schema: final

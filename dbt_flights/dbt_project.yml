@@ -1,0 +1,22 @@
+name: "flights_warehouse"
+version: "1.0.0"
+config-version: 2
+profile: "flights_warehouse"
+
+# Paths ---------------------------------------------------------------------
+model-paths: ["models"]
+seed-paths: ["seeds"]
+snapshot-paths: ["snapshots"]
+
+# Models --------------------------------------------------------------------
+models:
+  flights_warehouse:
+    +materialized: table
+
+seeds:
+  flights_warehouse:
+    +schema: staging   # seeds land in staging, transformed later
+
+snapshots:
+  flights_warehouse:
+    +target_schema: snapshot
