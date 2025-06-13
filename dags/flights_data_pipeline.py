@@ -208,7 +208,7 @@ with DAG(
 
     with TaskGroup(group_id='load', tooltip='Load data from MinIO to staging') as load_group:
         load_tasks = []
-        for table_name in TABLES:
+        for idx, table_name in enumerate(TABLES):
             task = PythonOperator(
                 task_id=f'load_{table_name}',
                 python_callable=load_table,
@@ -218,7 +218,7 @@ with DAG(
             load_tasks.append(task)
 
             # set dependency extract -> load for same table
-            dag.get_task(f'extract_{table_name}') >> task
+            extract_tasks[idx] >> task
 
         # Sequential dependencies in specified order
         for upstream, downstream in zip(load_tasks, load_tasks[1:]):
