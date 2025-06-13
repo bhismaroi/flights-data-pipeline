@@ -4,12 +4,14 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      network: host
     container_name: airflow_standalone
     environment:
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=${AIRFLOW_DB_URI}
       - AIRFLOW__CORE__LOAD_DEFAULT_CONNECTIONS=False
       - AIRFLOW__CORE__FERNET_KEY=${AIRFLOW_FERNET_KEY}
+      - AIRFLOW_ADMIN_PWD=${AIRFLOW_ADMIN_PWD:-admin}
     depends_on:
       - airflow_metadata
       - source_db

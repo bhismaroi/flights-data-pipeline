@@ -1,131 +1,72 @@
-Flights Data Pipeline
-Project Overview
-This project implements an automated data pipeline for a simulated flight booking system as part of the Pacmann Job Preparation Program. The pipeline extracts data from a PostgreSQL source database (bookings schema), stores it as CSV files in a MinIO object store, loads it into a PostgreSQL staging schema, and transforms it into dimension and fact tables in a data warehouse. The entire workflow is orchestrated using Apache Airflow (version 2.10.2) with a DAG named flights_data_pipeline.
-Architecture Description
-The pipeline consists of the following components:
+# Flights Data Pipeline
 
-Data Source: PostgreSQL database (bookings schema) containing tables: aircrafts_data, airports_data, bookings, tickets, seats, flights, ticket_flights, and boarding_passes.
-Data Lake: MinIO object store with a bucket named extracted-data for storing CSV files.
-Data Warehouse: PostgreSQL database with staging schema (for raw data) and warehouse schema (for dimension and fact tables).
-Orchestrator: Apache Airflow 2.10.2 in standalone mode, running the flights_data_pipeline DAG.
-Setup Tool: Docker Compose to manage all services.
+## Project Overview
+An end-to-end data pipeline for a simulated flight-booking system.  It **extracts** relational data from a source Postgres database, lands it as CSV files in **MinIO**, **loads** the files into a staging schema in another Postgres instance, then **transforms** the data into star-schema dimension & fact tables.  Everything is orchestrated with **Apache Airflow 2.8** inside Docker-Compose.
 
-![!\[alt text\](image.png)](images/diagram.png)
+## Architecture
+```
+┌─────────────┐       Extract        ┌───────────────┐        Load         ┌─────────────┐
+│  Postgres   │  ───────────────▶   │    MinIO      │  ───────────────▶   │  Postgres   │
+│  (bookings) │    CSV (temp/)      │  bucket        │    COPY / INSERT   │ (warehouse) │
+└─────────────┘                      └───────────────┘                      └─────────────┘
+        ▲                                   ▲                                     ▲
+        └───────────────  Airflow DAG  ─────┴───────────────  SQL  ───────────────┘
+```
+Components:
+* **Airflow** (LocalExecutor) – orchestrates the DAG (`flights_data_pipeline`).
+* **Source DB** – Postgres with `bookings` schema (initialised by `source_init.sql`).
+* **Object Store** – MinIO bucket `extracted-data` for intermediate CSV files.
+* **Warehouse** – Postgres with `stg` & `final` schemas (DDL in `staging_schema.sql` & `warehouse_init.sql`).
+* **Docker-Compose** – one-click local stack.
 
-Pipeline Flow
-The flights_data_pipeline DAG is structured into three TaskGroups:
+## Pipeline Flow
+1. **Extract** (dynamic Python tasks)
+   * For each table in `tables_to_extract` Airflow Variable.
+   * Incremental mode uses `updated_at` ≥ `{{ ds }}` & ≤ `{{ ds }} 23:59:59`.
+2. **Load** (dynamic Python tasks)
+   * Downloads CSV from MinIO and UPSERTs into `stg.<table>`.
+   * Skips automatically when corresponding extract task skipped.
+3. **Transform** (dynamic Postgres tasks)
+   * Executes SQL scripts in `include/transformations/` to populate dimensions & facts.
 
-Extract:
-Goal: Extract data from the bookings schema tables in the source PostgreSQL database.
-Method: Uses PythonOperator to query each table and save the results as CSV files in MinIO (/extracted-data/temp/<table_name>.csv).
-Tables: aircrafts_data, airports_data, bookings, tickets, seats, flights, ticket_flights, boarding_passes.
-Execution: Tasks run in parallel.
+## How to Run
+```bash
+# 1. Clone repo & move in
+$ git clone https://github.com/<your_account>/flights-data-pipeline.git
+$ cd flights-data-pipeline
 
+# 2. Configure .env (sample provided)
+$ cp .env.example .env  # then edit values; set AIRFLOW_ADMIN_PWD, MINIO creds, etc.
 
-Load:
-Goal: Load CSV files from MinIO into the staging schema in the warehouse PostgreSQL database.
-Method: Uses PythonOperator to read CSVs and upsert data into corresponding staging tables.
-Sequence: Tasks run sequentially in the order: aircrafts_data → airports_data → bookings → tickets → seats → flights → ticket_flights → boarding_passes.
+# 3. Generate Fernet key (optional helper)
+$ python fernet.py  # copy output into AIRFLOW_FERNET_KEY in .env
 
+# 4. Start the full stack
+$ docker compose up --build -d
 
-Transform:
-Goal: Transform data from the staging schema into dimension and fact tables in the warehouse schema.
-Method: Uses PostgresOperator to execute provided SQL scripts.
-Output Tables: Dimension tables (dim_airport, dim_seat, dim_passenger) and fact tables (fct_booking_ticket, fct_flight_activity, etc.).
-Execution: Tasks run sequentially, with dimension tables created before fact tables to respect dependencies.
+# 5. Open services
+* Airflow:  http://localhost:8080  (user: admin / pwd: value of $AIRFLOW_ADMIN_PWD)
+* MinIO:    http://localhost:9001  (user & pwd from .env)
+```
 
+## Screenshots
+Add screenshots of:
+* DAG Graph view showing Extract ➜ Load ➜ Transform groups.
+* Successful run status.
+* MinIO bucket with CSV files.
+* Warehouse tables in psql.
 
+## Repository Contents
+* `dags/` – DAG code.
+* `include/` – DDL & transformation SQL.
+* `Dockerfile`, `docker-compose.yml`, `start.sh` – container definitions.
+* `requirements.txt`, `.env.example` – dependencies & configuration.
+* `images/` – architecture / UI screenshots.
 
-How to Run and Simulate
-Follow these steps to set up and run the project:
+## Troubleshooting
+* **DAG missing?** – run `docker compose logs airflow_standalone` for import errors.
+* **Task skipped?** – likely no rows matched incremental window.
+* **Connection errors?** – verify Variables & Connections auto-created by `start.sh` or set manually.
 
-Clone the Repository:git clone <repository-url>
-cd mentoring1
-
-
-Set Up Environment Variables:
-Copy .env.example to .env:cp .env.example .env
-
-
-Generate a Fernet key for Airflow:python fernet.py
-
-
-Update AIRFLOW_FERNET_KEY in .env with the generated key.
-
-
-Place SQL Files:
-Ensure source_init.sql, staging_schema.sql, and warehouse_init.sql are in include/.
-Place transformation SQL scripts (e.g., dim_airport.sql, fct_booking_ticket.sql) in include/transformations/.
-
-
-Start Services:docker-compose up -d
-
-
-Configure Airflow:
-Access Airflow UI at http://localhost:8080 (username: admin, password: admin).
-Add a PostgreSQL connection for warehouse_db:
-Conn Id: warehouse_db
-Conn Type: Postgres
-Host: warehouse_db
-Schema: warehouse
-Login: postgres
-Password: postgres
-Port: 5432
-
-
-
-
-Deploy and Run the DAG:
-Place flights_data_pipeline.py in dags/.
-In Airflow UI, enable and trigger the flights_data_pipeline DAG.
-
-
-Verify Data Flow:
-MinIO: Check http://localhost:9001 for CSV files in extracted-data/temp/.
-Staging Schema: Use psql to query staging tables:docker exec -it warehouse_db psql -U postgres -d warehouse -c "\dt staging.*"
-
-
-Warehouse Schema: Verify dimension and fact tables:docker exec -it warehouse_db psql -U postgres -d warehouse -c "\dt warehouse.*"
-
-
-
-
-Monitor Logs:
-Check Airflow logs for errors:docker logs airflow_standalone
-
-
-
-
-
-Screenshots
-
-Airflow DAG Graph: Shows the task structure of flights_data_pipeline (extract, load, transform).
-![!\[alt text\](image.png)](images/diagram.png)
-
-MinIO Bucket: Displays CSV files in extracted-data/temp/.
-![!\[alt text\](miniobucket.png)](images/miniobucket.png)
-
-Warehouse Tables: Shows psql output of warehouse schema tables and sample data.
-![!\[alt text\](warehousestg.png)](images/warehousestg.png)
-
-
-
-
-Troubleshooting
-
-DAG Not Visible: Check flights_data_pipeline.py for syntax errors and ensure it’s in dags/.
-Task Failures:
-Extract: Verify source_db connection and table existence.
-Load: Ensure CSVs exist in MinIO and staging tables match source schema.
-Transform: Confirm warehouse_db connection and SQL script validity.
-
-
-Port Conflicts: Adjust ports in docker-compose.yml if needed (e.g., 5433:5432 to 5435:5432).
-
-Submission
-The project is submitted via a GitHub repository containing:
-
-All project files (dags/, include/, Dockerfile, docker-compose.yml, etc.).
-This README.md with complete documentation.
-Screenshots demonstrating successful execution.
-
+## License
+MIT

@@ -2,6 +2,10 @@
 
 from airflow import DAG
 from airflow.operators.python import PythonOperator
+from airflow.models import Variable
+from airflow.exceptions import AirflowSkipException
+from airflow.providers.postgres.hooks.postgres import PostgresHook
+from airflow.providers.slack.operators.slack_webhook import SlackWebhookOperator
 from airflow.providers.postgres.operators.postgres import PostgresOperator
 from airflow.utils.task_group import TaskGroup
 from datetime import datetime
@@ -18,6 +22,29 @@ import csv
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Slack failure callback
+def slack_fail(context):
+    dag_id = context.get('dag').dag_id
+    task_id = context.get('task_instance').task_id
+    execution_date = context.get('execution_date')
+    log_url = context.get('task_instance').log_url
+    exception = context.get('exception')
+
+    message = (
+        f":red_circle: *Airflow Alert!*\n"
+        f"*DAG*: `{dag_id}`\n"
+        f"*Task*: `{task_id}`\n"
+        f"*Execution Date*: {execution_date}\n"
+        f"*Log*: <{log_url}|View Logs>\n"
+        f"*Exception*: `{exception}`"
+    )
+
+    SlackWebhookOperator(
+        task_id="notify_slack_failure",
+        http_conn_id="slack_notifier",
+        message=message,
+    ).execute(context=context)
+
 # Default arguments for the DAG
 default_args = {
     'owner': 'airflow',
@@ -25,6 +52,7 @@ default_args = {
     'email_on_failure': False,
     'email_on_retry': False,
     'retries': 1,
+    'on_failure_callback': slack_fail,
 }
 
 # Initialize the DAG
@@ -33,26 +61,15 @@ with DAG(
     default_args=default_args,
     description='A data pipeline for flight booking system',
     schedule_interval='@daily',
-    start_date=datetime(2025, 5, 19),
-    catchup=False,
+    start_date=datetime(2025, 1, 1),
+    catchup=True,
+    max_active_runs=1,
 ) as dag:
 
-    # Configuration (using environment variables from .env)
-    SOURCE_DB_CONN = {
-        'host': 'source_db',
-        'port': '5432',
-        'dbname': os.getenv('SOURCE_DB_NAME', 'bookings'),
-        'user': os.getenv('SOURCE_DB_USER', 'postgres'),
-        'password': os.getenv('SOURCE_DB_PASSWORD', 'postgres'),
-    }
-
-    WAREHOUSE_DB_CONN = {
-        'host': 'warehouse_db',
-        'port': '5432',
-        'dbname': os.getenv('WAREHOUSE_DB_NAME', 'warehouse'),
-        'user': os.getenv('WAREHOUSE_DB_USER', 'postgres'),
-        'password': os.getenv('WAREHOUSE_DB_PASSWORD', 'postgres'),
-    }
+    # Configuration using Airflow Variables and Connections
+    incremental = Variable.get("incremental", default_var="True") == "True"
+    TABLES = Variable.get("tables_to_extract", deserialize_json=True)
+    TABLE_PK_MAP = Variable.get("tables_to_load", deserialize_json=True)
 
     MINIO_CLIENT = Minio(
         'minio:9000',
@@ -66,17 +83,6 @@ with DAG(
     if not MINIO_CLIENT.bucket_exists(BUCKET_NAME):
         MINIO_CLIENT.make_bucket(BUCKET_NAME)
 
-    TABLES = [
-        'aircrafts_data',
-        'airports_data',
-        'bookings',
-        'tickets',
-        'seats',
-        'flights',
-        'ticket_flights',
-        'boarding_passes',
-    ]
-
     # Define JSON columns per table (based on schema)
     JSON_COLUMNS = {
         'aircrafts_data': ['model'],
@@ -88,11 +94,27 @@ with DAG(
     def extract_table(table_name, **kwargs):
         try:
             logger.info(f"Extracting table: {table_name}")
-            # Connect to source database
-            conn = psycopg2.connect(**SOURCE_DB_CONN)
-            query = f"SELECT * FROM bookings.{table_name}"
+            # Connect via Airflow connection
+            hook = PostgresHook(postgres_conn_id="sources-conn")
+            conn = hook.get_conn()
+
+            # Build query (incremental or full)
+            if incremental:
+                ds = kwargs["ds"]  # e.g. 2025-06-13
+                since = ds
+                until = f"{ds} 23:59:59"
+                query = (
+                    f"SELECT * FROM bookings.{table_name} "
+                    f"WHERE updated_at >= '{since}' AND updated_at <= '{until}'"
+                )
+            else:
+                query = f"SELECT * FROM bookings.{table_name}"
             df = pd.read_sql(query, conn)
             conn.close()
+
+            # Skip if no new data
+            if df.empty:
+                raise AirflowSkipException(f"No new data for {table_name}")
 
             # Handle JSON columns: Convert to string for CSV storage
             json_cols = JSON_COLUMNS.get(table_name, [])
@@ -116,13 +138,14 @@ with DAG(
             raise
 
     with TaskGroup(group_id='extract', tooltip='Extract data from source to MinIO') as extract_group:
-        extract_tasks = [
-            PythonOperator(
+        extract_tasks = []
+        for table_name in TABLES:
+            task = PythonOperator(
                 task_id=f'extract_{table_name}',
                 python_callable=extract_table,
                 op_kwargs={'table_name': table_name},
-            ) for table_name in TABLES
-        ]
+            )
+            extract_tasks.append(task)
 
     # Load Task Group: Load data from MinIO to staging schema
     def load_table(table_name, **kwargs):
@@ -136,17 +159,27 @@ with DAG(
             # Read CSV
             df = pd.read_csv(csv_path, keep_default_na=False, na_values=['NaN', ''])
 
-            # Connect to warehouse database
-            conn = psycopg2.connect(**WAREHOUSE_DB_CONN)
+            # Connect via Airflow connection
+            hook = PostgresHook(postgres_conn_id="warehouse-conn")
+            conn = hook.get_conn()
             cursor = conn.cursor()
 
-            # Clear existing data (use DELETE to avoid foreign key issues)
-            cursor.execute(f"DELETE FROM stg.{table_name}")
+            # Clear / upsert logic
+            if incremental:
+                ds = kwargs["ds"]
+                until = f"{ds} 23:59:59"
+                # Remove rows from the same date window to be re-inserted
+                cursor.execute(
+                    f"DELETE FROM stg.{table_name} WHERE updated_at >= %s AND updated_at <= %s",
+                    (ds, until),
+                )
+            else:
+                cursor.execute(f"DELETE FROM stg.{table_name}")
 
             # Prepare data for insertion
             columns = df.columns.tolist()
             json_cols = JSON_COLUMNS.get(table_name, [])
-            
+
             for col in json_cols:
                 if col in df.columns:
                     df[col] = df[col].apply(lambda x: json.dumps(x) if pd.notnull(x) else None)
@@ -180,68 +213,42 @@ with DAG(
                 task_id=f'load_{table_name}',
                 python_callable=load_table,
                 op_kwargs={'table_name': table_name},
+                trigger_rule='all_success',  # skip if extract skipped
             )
             load_tasks.append(task)
 
-        # Set sequential dependencies for load tasks (respects foreign keys)
-        for i in range(len(load_tasks) - 1):
-            load_tasks[i] >> load_tasks[i + 1]
+            # set dependency extract -> load for same table
+            dag.get_task(f'extract_{table_name}') >> task
+
+        # Sequential dependencies in specified order
+        for upstream, downstream in zip(load_tasks, load_tasks[1:]):
+            upstream >> downstream
 
     # Transform Task Group: Transform staging data into warehouse schema
     with TaskGroup(group_id='transform', tooltip='Transform staging data into warehouse') as transform_group:
-        # Dimension tables
-        dim_aircraft = PostgresOperator(
-            task_id='transform_dim_aircraft',
-            postgres_conn_id='warehouse_db',
-            sql='/opt/airflow/include/transformations/dim_aircrafts.sql',
-        )
+        transform_order = [
+            ('dim_aircrafts', 'dim_aircrafts.sql'),
+            ('dim_airport', 'dim_airport.sql'),
+            ('dim_passenger', 'dim_passenger.sql'),
+            ('dim_seat', 'dim_seat.sql'),
+            ('fct_boarding_pass', 'fct_boarding_pass.sql'),
+            ('fct_booking_ticket', 'fct_booking_ticket.sql'),
+            ('fct_flight_activity', 'fct_flight_activity.sql'),
+            ('fct_seat_occupied_daily', 'fct_seat_occupied_daily.sql'),
+        ]
 
-        dim_airport = PostgresOperator(
-            task_id='transform_dim_airport',
-            postgres_conn_id='warehouse_db',
-            sql='/opt/airflow/include/transformations/dim_airport.sql',
-        )
+        transform_tasks = []
+        for task_name, sql_file in transform_order:
+            t = PostgresOperator(
+                task_id=f'transform_{task_name}',
+                postgres_conn_id='warehouse-conn',
+                sql=f'/opt/airflow/include/transformations/{sql_file}',
+            )
+            transform_tasks.append(t)
 
-        dim_passenger = PostgresOperator(
-            task_id='transform_dim_passenger',
-            postgres_conn_id='warehouse_db',
-            sql='/opt/airflow/include/transformations/dim_passenger.sql',
-        )
-
-        dim_seat = PostgresOperator(
-            task_id='transform_dim_seat',
-            postgres_conn_id='warehouse_db',
-            sql='/opt/airflow/include/transformations/dim_seat.sql',
-        )
-
-        # Fact tables
-        fct_boarding_pass = PostgresOperator(
-            task_id='transform_fct_boarding_pass',
-            postgres_conn_id='warehouse_db',
-            sql='/opt/airflow/include/transformations/fct_boarding_pass.sql',
-        )
-
-        fct_booking_ticket = PostgresOperator(
-            task_id='transform_fct_booking_ticket',
-            postgres_conn_id='warehouse_db',
-            sql='/opt/airflow/include/transformations/fct_booking_ticket.sql',
-        )
-
-        fct_flight_activity = PostgresOperator(
-            task_id='transform_fct_flight_activity',
-            postgres_conn_id='warehouse_db',
-            sql='/opt/airflow/include/transformations/fct_flight_activity.sql',
-        )
-
-        fct_seat_occupied_daily = PostgresOperator(
-            task_id='transform_fct_seat_occupied_daily',
-            postgres_conn_id='warehouse_db',
-            sql='/opt/airflow/include/transformations/fct_seat_occupied_daily.sql',
-        )
-
-        # Define dependencies for transformations
-        [dim_aircraft, dim_airport, dim_passenger] >> dim_seat
-        dim_seat >> [fct_boarding_pass, fct_booking_ticket, fct_flight_activity, fct_seat_occupied_daily]
+        # chain sequentially in order defined
+        for up, down in zip(transform_tasks, transform_tasks[1:]):
+            up >> down
 
     # Set dependencies between Task Groups
     extract_group >> load_group >> transform_group
