@@ -60,11 +60,16 @@ $ docker compose up --build -d
 
 ## DAG Graph
 
-![DAG Graph](images/DAGS diagram.png)
+![DAG Graph](images/DAGSdiagram.png)
 
 ## MinIO bucket
 
 ![MinIO](images/miniobucket.png)
+
+## Warehouse schema
+
+![Warehouse schema](images/warehousestg.png)
+
 
 ## Troubleshooting
 * **DAG missing?** – run `docker compose logs airflow_standalone` for import errors.
