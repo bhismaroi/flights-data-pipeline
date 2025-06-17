@@ -7,7 +7,9 @@ services:
       network: host
     container_name: airflow_standalone
     environment:
-      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
+      - AIRFLOW__CELERY__BROKER_URL=redis://redis:6379/0
+      - AIRFLOW__CELERY__RESULT_BACKEND=redis://redis:6379/1
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=${AIRFLOW_DB_URI}
       - AIRFLOW__CORE__LOAD_DEFAULT_CONNECTIONS=False
       - AIRFLOW__CORE__FERNET_KEY=${AIRFLOW_FERNET_KEY}
@@ -22,6 +24,7 @@ services:
     volumes:
       - ./dags:/opt/airflow/dags
       - ./include:/opt/airflow/include
+      - ./dbt:/opt/airflow/dbt
     networks:
       - airflow-networks
 
@@ -67,6 +70,12 @@ services:
       - ./include/staging_schema.sql:/docker-entrypoint-initdb.d/staging_schema.sql
       - ./include/warehouse_init.sql:/docker-entrypoint-initdb.d/warehouse_init.sql
       - warehouse_db_data:/var/lib/postgresql/data
+    networks:
+      - airflow-networks
+
+  redis:
+    image: redis:7
+    container_name: redis
     networks:
       - airflow-networks
 

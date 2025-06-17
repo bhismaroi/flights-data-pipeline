@@ -1,0 +1,11 @@
+name: 'flights_project'
+version: '1.0.0'
+profile: 'warehouse'
+config-version: 2
+
+model-paths: ['models']
+seed-paths: ['seeds']
+snapshot-paths: ['snapshots']
+
+database: warehouse
+schema: final

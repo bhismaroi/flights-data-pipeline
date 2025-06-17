@@ -1,0 +1,12 @@
+warehouse:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: warehouse_db
+      port: 5432
+      user: {{ env_var('WAREHOUSE_DB_USER', 'postgres') }}
+      password: {{ env_var('WAREHOUSE_DB_PASSWORD', 'postgres') }}
+      dbname: {{ env_var('WAREHOUSE_DB_NAME', 'warehouse') }}
+      schema: stg
+      threads: 4

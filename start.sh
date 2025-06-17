@@ -71,6 +71,7 @@ airflow connections add slack_notifier \
 
 # ------------------------------------------------------------------
 
-# Start webserver and scheduler in background & foreground respectively
+# Start webserver and worker in background, scheduler in foreground
 airflow webserver -p 8080 &
+airflow celery worker &
 airflow scheduler
